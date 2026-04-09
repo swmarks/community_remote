@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 
 import 'package:community_remote/src/frontend/browse.dart';
@@ -5,6 +7,23 @@ import 'package:community_remote/src/rust/api/roon_browse_mirror.dart';
 import 'package:community_remote/src/rust/api/roon_transport_mirror.dart';
 import 'package:community_remote/src/rust/api/simple.dart';
 import 'package:flutter/material.dart';
+import 'package:audio_service/audio_service.dart';
+
+late RoonAudioHandler audioHandler;
+
+class RoonAudioHandler extends BaseAudioHandler with SeekHandler {
+  @override
+  Future<void> play() async => control(control: Control.play);
+
+  @override
+  Future<void> pause() async => control(control: Control.pause);
+
+  @override
+  Future<void> skipToNext() async => control(control: Control.next);
+
+  @override
+  Future<void> skipToPrevious() async => control(control: Control.previous);
+}
 
 const roonAccentColor = Color.fromRGBO(0x75, 0x75, 0xf3, 1.0);
 const smallScreenMaxWidth = 900;
@@ -124,6 +143,20 @@ class MyAppState extends ChangeNotifier {
     if (event is RoonEvent_ZoneSeek) {
       ZoneSeek seek = event.field0;
 
+      bool isPlaying = zone?.state == PlayState.playing;
+
+      audioHandler.playbackState.add(PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          isPlaying ? MediaControl.pause : MediaControl.play,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {MediaAction.seek},
+        playing: isPlaying, // This tells Linux to tick the clock!
+        processingState: AudioProcessingState.ready,
+        updatePosition: Duration(seconds: seek.seekPosition ?? 0),
+      ));
+
       if (zone!.nowPlaying != null && zone!.nowPlaying!.length != null) {
         for (Function callback in _progressCallbacks) {
           callback(zone!.nowPlaying!.length, seek.seekPosition);
@@ -134,11 +167,10 @@ class MyAppState extends ChangeNotifier {
         }
       }
 
-      if (_queueRemainingCallback != null
-        && seek.queueTimeRemaining > 0
-        && zone!.nowPlaying != null
-        && zone!.nowPlaying!.length != null)
-      {
+      if (_queueRemainingCallback != null &&
+          seek.queueTimeRemaining > 0 &&
+          zone!.nowPlaying != null &&
+          zone!.nowPlaying!.length != null) {
         _queueRemainingCallback!(seek.queueTimeRemaining);
       }
 
@@ -152,6 +184,28 @@ class MyAppState extends ChangeNotifier {
         }
       }
 
+      final currentTrack = zone?.nowPlaying;
+      if (currentTrack != null &&
+          currentTrack.imageKey == event.field0.imageKey) {
+        // Create a temporary file and write the raw Roon image bytes to it
+        getTemporaryDirectory().then((tempDir) {
+          final file = File('${tempDir.path}/${event.field0.imageKey}.jpg');
+
+          file.writeAsBytes(event.field0.image).then((_) {
+            audioHandler.mediaItem.add(MediaItem(
+              id: currentTrack.imageKey ?? 'unknown_id',
+              title: currentTrack.oneLine.line1,
+              artist: currentTrack.twoLine.line1, // Removed the ?. and ?? ""
+              album: currentTrack.threeLine.line1, // Removed the ?. and ?? ""
+              duration: currentTrack.length != null
+                  ? Duration(seconds: currentTrack.length!)
+                  : null,
+              artUri: Uri.file(file.path),
+            ));
+          });
+        });
+      }
+
       if (_imageCallback != null) {
         _imageCallback!(event.field0);
         _imageCallback = null;
@@ -160,7 +214,8 @@ class MyAppState extends ChangeNotifier {
       return;
     } else if (event is RoonEvent_BrowseItems) {
       String route = Uri.encodeComponent(event.field0.list.title);
-      Function(BrowseItems)? callback = _browseCallbacks[route] ?? _browseCallbacks['-'];
+      Function(BrowseItems)? callback =
+          _browseCallbacks[route] ?? _browseCallbacks['-'];
 
       if (callback != null) {
         callback(event.field0);
@@ -222,6 +277,46 @@ class MyAppState extends ChangeNotifier {
       zone = event.field0;
 
       if (zone != null) {
+        final nowPlaying = zone!.nowPlaying; // Variable is named nowPlaying
+        if (nowPlaying != null) {
+          final currentMediaItem = audioHandler.mediaItem.value;
+          Uri? existingArtUri;
+          final newImageKey = nowPlaying.imageKey ?? 'unknown_id';
+
+          if (currentMediaItem?.id == newImageKey) {
+            // It's the same track (e.g., just paused/played), keep the image
+            existingArtUri = currentMediaItem?.artUri;
+          } else if (nowPlaying.imageKey != null) {
+            requestThumbnail(nowPlaying.imageKey, (imageEvent) {});
+          }
+
+          audioHandler.mediaItem.add(MediaItem(
+            id: newImageKey,
+            title: nowPlaying.oneLine.line1,
+            artist: nowPlaying.twoLine.line1,
+            album: nowPlaying.threeLine.line1,
+            duration: nowPlaying.length != null
+                ? Duration(seconds: nowPlaying.length!)
+                : null,
+            artUri:
+                existingArtUri, // Will be null for a split second, then RoonEvent_Image takes over
+          ));
+        }
+
+        bool isPlaying = zone!.state == PlayState.playing;
+        audioHandler.playbackState.add(PlaybackState(
+          controls: [
+            MediaControl.skipToPrevious,
+            isPlaying ? MediaControl.pause : MediaControl.play,
+            MediaControl.skipToNext,
+          ],
+          systemActions: const {MediaAction.seek},
+          playing: isPlaying,
+          processingState: AudioProcessingState.ready,
+          updatePosition:
+              Duration(seconds: zone!.nowPlaying?.seekPosition ?? 0),
+        ));
+
         int length = 0;
         int? seekPosition = zone!.nowPlaying?.seekPosition;
 
@@ -234,15 +329,13 @@ class MyAppState extends ChangeNotifier {
         }
       }
 
-      if (_queueRemainingCallback != null
-        && zone != null
-        && zone!.queueTimeRemaining >= 0
-        && zone!.nowPlaying != null
-        && zone!.nowPlaying!.length != null)
-      {
+      if (_queueRemainingCallback != null &&
+          zone != null &&
+          zone!.queueTimeRemaining >= 0 &&
+          zone!.nowPlaying != null &&
+          zone!.nowPlaying!.length != null) {
         _queueRemainingCallback!(zone!.queueTimeRemaining);
       }
-
     } else if (event is RoonEvent_OutputsChanged) {
       outputs = event.field0;
     } else if (event is RoonEvent_BrowseActions) {

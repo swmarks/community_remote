@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_android_volume_keydown/flutter_android_volume_keydown.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -18,28 +19,38 @@ var appState = MyAppState();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize the AudioService (this automatically uses MPRIS on Linux)
+  audioHandler = await AudioService.init(
+    builder: () => RoonAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'org.mpris.MediaPlayer2.community_remote',
+      androidNotificationChannelName: 'Community Remote',
+    ),
+  );
+
   await RustLib.init();
 
   Directory supportPath = await getApplicationSupportDirectory();
   PackageInfo packageInfo = await PackageInfo.fromPlatform();
-  String jsonString = await startRoon(supportPath: supportPath.path, cb: appState.cb);
+  String jsonString =
+      await startRoon(supportPath: supportPath.path, cb: appState.cb);
   Map<String, dynamic> stored = jsonDecode(jsonString) as Map<String, dynamic>;
-  Map<String, dynamic> settings = stored.isNotEmpty ? stored : {
-    "expand": false,
-    "theme": "light",
-    "view": Category.artists.index,
-    "zoneId": null,
-    "userName": null,
-  };
+  Map<String, dynamic> settings = stored.isNotEmpty
+      ? stored
+      : {
+          "expand": false,
+          "theme": "light",
+          "view": Category.artists.index,
+          "zoneId": null,
+          "userName": null,
+        };
 
   appState.setSettings(settings);
 
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => appState,
-      child: Main(version: packageInfo.version),
-    )
-  );
+  runApp(ChangeNotifierProvider(
+    create: (context) => appState,
+    child: Main(version: packageInfo.version),
+  ));
 }
 
 class Main extends StatefulWidget {
