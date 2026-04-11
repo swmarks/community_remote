@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 
+use crate::api::roon_transport_mirror::Repeat;
 use flutter_rust_bridge::DartFnFuture;
 use once_cell::sync::Lazy;
 use roon_api::browse::Item as BrowseItem;
@@ -149,7 +150,7 @@ fn init_logger(support_path: &str, log_level: log::LevelFilter) {
 }
 
 pub async fn select_zone(zone_id: String) {
-    let api = API.lock().await;
+    let mut api = API.lock().await; // Add 'mut' here
 
     if let Some(roon) = api.roon.as_ref() {
         roon.select_zone(&zone_id).await;
@@ -264,6 +265,14 @@ pub async fn control_by_zone_id(zone_id: String, control: Control) {
 
     if let Some(roon) = api.roon.as_ref() {
         roon.control_by_zone_id(&zone_id, &control).await;
+    }
+}
+
+pub async fn change_settings(repeat: Option<Repeat>, shuffle: Option<bool>) {
+    let api = API.lock().await;
+
+    if let Some(roon) = api.roon.as_ref() {
+        roon.change_settings(repeat, shuffle).await;
     }
 }
 

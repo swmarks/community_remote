@@ -1,5 +1,6 @@
 use roon_api::browse::Item as BrowseItem;
 use roon_api::browse::ItemHint as BrowseItemHint;
+use roon_api::transport::Repeat;
 use roon_api::{
     browse::{Browse, BrowseOpts, LoadOpts},
     image::{Args, Image, Scale, Scaling},
@@ -7,7 +8,7 @@ use roon_api::{
     status::{self, Status},
     transport::{
         volume::{ChangeMode, Mute},
-        Control, State, Transport,
+        Control, Settings, State, Transport,
     },
     Info, RoonApi, Services, Svc,
 };
@@ -416,6 +417,44 @@ impl Roon {
         if allowed {
             handler.transport.as_ref()?.control(zone_id, control).await;
         }
+
+        Some(())
+    }
+
+    pub async fn change_settings(
+        &self,
+        repeat: Option<Repeat>,
+        shuffle: Option<bool>,
+    ) -> Option<()> {
+        let zone_id = self.handler.lock().await.zone_id.clone()?;
+
+        self.change_settings_by_zone_id(&zone_id, repeat, shuffle)
+            .await;
+
+        Some(())
+    }
+
+    pub async fn change_settings_by_zone_id(
+        &self,
+        zone_id: &str,
+        repeat: Option<Repeat>,
+        shuffle: Option<bool>,
+    ) -> Option<()> {
+        let handler = self.handler.lock().await;
+
+        let zone = handler.zone_map.get(zone_id)?;
+
+        let new_settings = Settings {
+            repeat: repeat.unwrap_or(zone.settings.repeat.clone()),
+            shuffle: shuffle.unwrap_or(zone.settings.shuffle),
+            auto_radio: zone.settings.auto_radio,
+        };
+
+        handler
+            .transport
+            .as_ref()?
+            .change_settings(zone_id, new_settings)
+            .await;
 
         Some(())
     }

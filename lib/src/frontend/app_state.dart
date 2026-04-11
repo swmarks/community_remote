@@ -11,7 +11,11 @@ import 'package:audio_service/audio_service.dart';
 
 late RoonAudioHandler audioHandler;
 
-class RoonAudioHandler extends BaseAudioHandler with SeekHandler {
+class RoonAudioHandler extends BaseAudioHandler {
+  bool? targetShuffle;
+  Repeat? targetRepeat;
+  DateTime? lastActionTime;
+
   @override
   Future<void> play() async => control(control: Control.play);
 
@@ -23,6 +27,29 @@ class RoonAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async => control(control: Control.previous);
+
+  @override
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    targetShuffle = (shuffleMode == AudioServiceShuffleMode.all);
+    lastActionTime = DateTime.now();
+    
+    playbackState.add(playbackState.value.copyWith(shuffleMode: shuffleMode));
+    
+    await changeSettings(shuffle: targetShuffle);
+  }
+
+  @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    lastActionTime = DateTime.now();
+    
+    playbackState.add(playbackState.value.copyWith(repeatMode: repeatMode));
+    
+    targetRepeat = (repeatMode == AudioServiceRepeatMode.one) 
+        ? Repeat.one 
+        : (repeatMode == AudioServiceRepeatMode.all ? Repeat.all : Repeat.off);
+        
+    await changeSettings(repeat: targetRepeat);
+  }
 }
 
 const roonAccentColor = Color.fromRGBO(0x75, 0x75, 0xf3, 1.0);
@@ -142,17 +169,20 @@ class MyAppState extends ChangeNotifier {
   void cb(event) {
     if (event is RoonEvent_ZoneSeek) {
       ZoneSeek seek = event.field0;
-
       bool isPlaying = zone?.state == PlayState.playing;
+      
+      final currentState = audioHandler.playbackState.value;
 
-      audioHandler.playbackState.add(PlaybackState(
+      audioHandler.playbackState.add(currentState.copyWith(
         controls: [
           MediaControl.skipToPrevious,
           isPlaying ? MediaControl.pause : MediaControl.play,
           MediaControl.skipToNext,
         ],
-        systemActions: const {MediaAction.seek},
-        playing: isPlaying, // This tells Linux to tick the clock!
+        systemActions: currentState.systemActions.isEmpty 
+            ? const {MediaAction.seek, MediaAction.setRepeatMode, MediaAction.setShuffleMode} 
+            : currentState.systemActions,
+        playing: isPlaying,
         processingState: AudioProcessingState.ready,
         updatePosition: Duration(seconds: seek.seekPosition ?? 0),
       ));
@@ -195,8 +225,8 @@ class MyAppState extends ChangeNotifier {
             audioHandler.mediaItem.add(MediaItem(
               id: currentTrack.imageKey ?? 'unknown_id',
               title: currentTrack.oneLine.line1,
-              artist: currentTrack.twoLine.line1, // Removed the ?. and ?? ""
-              album: currentTrack.threeLine.line1, // Removed the ?. and ?? ""
+              artist: currentTrack.twoLine.line1,
+              album: currentTrack.threeLine.line1,
               duration: currentTrack.length != null
                   ? Duration(seconds: currentTrack.length!)
                   : null,
@@ -274,17 +304,19 @@ class MyAppState extends ChangeNotifier {
     } else if (event is RoonEvent_ZonesChanged) {
       zoneList = event.field0;
     } else if (event is RoonEvent_ZoneChanged) {
-      zone = event.field0;
+      final activeZone = event.field0;
 
-      if (zone != null) {
-        final nowPlaying = zone!.nowPlaying; // Variable is named nowPlaying
+      if (activeZone != null) {
+        zone = activeZone;
+        notifyListeners();
+
+        final nowPlaying = activeZone.nowPlaying;
         if (nowPlaying != null) {
           final currentMediaItem = audioHandler.mediaItem.value;
           Uri? existingArtUri;
           final newImageKey = nowPlaying.imageKey ?? 'unknown_id';
 
           if (currentMediaItem?.id == newImageKey) {
-            // It's the same track (e.g., just paused/played), keep the image
             existingArtUri = currentMediaItem?.artUri;
           } else if (nowPlaying.imageKey != null) {
             requestThumbnail(nowPlaying.imageKey, (imageEvent) {});
@@ -298,43 +330,87 @@ class MyAppState extends ChangeNotifier {
             duration: nowPlaying.length != null
                 ? Duration(seconds: nowPlaying.length!)
                 : null,
-            artUri:
-                existingArtUri, // Will be null for a split second, then RoonEvent_Image takes over
+            artUri: existingArtUri,
           ));
         }
 
-        bool isPlaying = zone!.state == PlayState.playing;
+        final now = DateTime.now();
+        final bool roonShuffle = activeZone.settings.shuffle;
+        final Repeat roonRepeat = activeZone.settings.repeat;
+
+        AudioServiceShuffleMode mprisShuffle;
+        
+        if (audioHandler.targetShuffle != null && 
+            roonShuffle != audioHandler.targetShuffle &&
+            audioHandler.lastActionTime != null &&
+            now.difference(audioHandler.lastActionTime!).inMilliseconds < 2000) {
+          mprisShuffle = audioHandler.targetShuffle! 
+              ? AudioServiceShuffleMode.all 
+              : AudioServiceShuffleMode.none;
+        } else {
+          audioHandler.targetShuffle = null; 
+          mprisShuffle = roonShuffle ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none;
+        }
+
+        AudioServiceRepeatMode mprisRepeat;
+        
+        if (audioHandler.targetRepeat != null && 
+            roonRepeat != audioHandler.targetRepeat &&
+            audioHandler.lastActionTime != null &&
+            now.difference(audioHandler.lastActionTime!).inMilliseconds < 2000) {
+          mprisRepeat = audioHandler.playbackState.value.repeatMode;
+        } else {
+          audioHandler.targetRepeat = null;
+          if (roonRepeat == Repeat.one) {
+            mprisRepeat = AudioServiceRepeatMode.one;
+          } else if (roonRepeat == Repeat.all) {
+            mprisRepeat = AudioServiceRepeatMode.all;
+          } else {
+            mprisRepeat = AudioServiceRepeatMode.none;
+          }
+        }
+
+        bool isPlaying = activeZone.state == PlayState.playing;
+
         audioHandler.playbackState.add(PlaybackState(
           controls: [
             MediaControl.skipToPrevious,
             isPlaying ? MediaControl.pause : MediaControl.play,
             MediaControl.skipToNext,
           ],
-          systemActions: const {MediaAction.seek},
+          systemActions: const {
+            MediaAction.seek,
+            MediaAction.setRepeatMode,
+            MediaAction.setShuffleMode,
+          },
           playing: isPlaying,
           processingState: AudioProcessingState.ready,
-          updatePosition:
-              Duration(seconds: zone!.nowPlaying?.seekPosition ?? 0),
+          updatePosition: Duration(seconds: activeZone.nowPlaying?.seekPosition ?? 0),
+          shuffleMode: mprisShuffle,
+          repeatMode: mprisRepeat,
         ));
+        
+        if (audioHandler.mediaItem.value != null) {
+          audioHandler.mediaItem.add(audioHandler.mediaItem.value!);
+        }
 
         int length = 0;
-        int? seekPosition = zone!.nowPlaying?.seekPosition;
+        int? seekPosition = activeZone.nowPlaying?.seekPosition;
 
-        if (zone!.nowPlaying != null && zone!.nowPlaying!.length != null) {
-          length = zone!.nowPlaying!.length!;
+        if (activeZone.nowPlaying != null && activeZone.nowPlaying!.length != null) {
+          length = activeZone.nowPlaying!.length!;
         }
 
         for (Function(int, int?) callback in _progressCallbacks) {
           callback(length, seekPosition);
         }
-      }
 
-      if (_queueRemainingCallback != null &&
-          zone != null &&
-          zone!.queueTimeRemaining >= 0 &&
-          zone!.nowPlaying != null &&
-          zone!.nowPlaying!.length != null) {
-        _queueRemainingCallback!(zone!.queueTimeRemaining);
+        if (_queueRemainingCallback != null &&
+            activeZone.queueTimeRemaining >= 0 &&
+            activeZone.nowPlaying != null &&
+            activeZone.nowPlaying!.length != null) {
+          _queueRemainingCallback!(activeZone.queueTimeRemaining);
+        }
       }
     } else if (event is RoonEvent_OutputsChanged) {
       outputs = event.field0;

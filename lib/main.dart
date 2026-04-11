@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_android_volume_keydown/flutter_android_volume_keydown.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_service_mpris/audio_service_mpris.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -19,7 +20,21 @@ var appState = MyAppState();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize the AudioService (this automatically uses MPRIS on Linux)
+  if (Platform.isLinux) {
+    AudioServiceMpris.init(
+      dBusName: 'CommunityRemote',
+      identity: 'Community Remote',
+      desktopEntry: 'community_remote',
+      minimumRate: 1.0,
+      maximumRate: 1.0,
+      canGoNext: true,
+      canGoPrevious: true,
+      canPlay: true,
+      canPause: true,
+      canControl: true,
+    );
+  }
+
   audioHandler = await AudioService.init(
     builder: () => RoonAudioHandler(),
     config: const AudioServiceConfig(
