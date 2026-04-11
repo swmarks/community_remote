@@ -32,22 +32,22 @@ class RoonAudioHandler extends BaseAudioHandler {
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
     targetShuffle = (shuffleMode == AudioServiceShuffleMode.all);
     lastActionTime = DateTime.now();
-    
+
     playbackState.add(playbackState.value.copyWith(shuffleMode: shuffleMode));
-    
+
     await changeSettings(shuffle: targetShuffle);
   }
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
     lastActionTime = DateTime.now();
-    
+
     playbackState.add(playbackState.value.copyWith(repeatMode: repeatMode));
-    
-    targetRepeat = (repeatMode == AudioServiceRepeatMode.one) 
-        ? Repeat.one 
+
+    targetRepeat = (repeatMode == AudioServiceRepeatMode.one)
+        ? Repeat.one
         : (repeatMode == AudioServiceRepeatMode.all ? Repeat.all : Repeat.off);
-        
+
     await changeSettings(repeat: targetRepeat);
   }
 }
@@ -170,7 +170,7 @@ class MyAppState extends ChangeNotifier {
     if (event is RoonEvent_ZoneSeek) {
       ZoneSeek seek = event.field0;
       bool isPlaying = zone?.state == PlayState.playing;
-      
+
       final currentState = audioHandler.playbackState.value;
 
       audioHandler.playbackState.add(currentState.copyWith(
@@ -179,8 +179,12 @@ class MyAppState extends ChangeNotifier {
           isPlaying ? MediaControl.pause : MediaControl.play,
           MediaControl.skipToNext,
         ],
-        systemActions: currentState.systemActions.isEmpty 
-            ? const {MediaAction.seek, MediaAction.setRepeatMode, MediaAction.setShuffleMode} 
+        systemActions: currentState.systemActions.isEmpty
+            ? const {
+                MediaAction.seek,
+                MediaAction.setRepeatMode,
+                MediaAction.setShuffleMode
+              }
             : currentState.systemActions,
         playing: isPlaying,
         processingState: AudioProcessingState.ready,
@@ -217,21 +221,22 @@ class MyAppState extends ChangeNotifier {
       final currentTrack = zone?.nowPlaying;
       if (currentTrack != null &&
           currentTrack.imageKey == event.field0.imageKey) {
-          
         getTemporaryDirectory().then((tempDir) {
-          final fileSize = event.field0.image.length;
-          final file = File('${tempDir.path}/${event.field0.imageKey}_$fileSize.jpg');
+          final file = File('${tempDir.path}/${event.field0.imageKey}.jpg');
 
           file.writeAsBytes(event.field0.image).then((_) {
+            final uniqueId =
+                '${event.field0.imageKey}_${currentTrack.oneLine.line1}';
+
             audioHandler.mediaItem.add(MediaItem(
-              id: currentTrack.imageKey ?? 'unknown_id',
+              id: uniqueId,
               title: currentTrack.oneLine.line1,
-              artist: currentTrack.twoLine.line1, 
-              album: currentTrack.threeLine.line1, 
+              artist: currentTrack.twoLine.line1,
+              album: currentTrack.threeLine.line1,
               duration: currentTrack.length != null
                   ? Duration(seconds: currentTrack.length!)
                   : null,
-              artUri: Uri.file(file.path),
+              artUri: Uri.file(file.path), // Image is guaranteed to be ready
             ));
           });
         });
@@ -314,25 +319,25 @@ class MyAppState extends ChangeNotifier {
         final nowPlaying = activeZone.nowPlaying;
         if (nowPlaying != null) {
           final currentMediaItem = audioHandler.mediaItem.value;
-          Uri? existingArtUri;
-          final newImageKey = nowPlaying.imageKey ?? 'unknown_id';
+          final newImageKey = nowPlaying.imageKey ?? 'no_art';
+          final uniqueId = '${newImageKey}_${nowPlaying.oneLine.line1}';
 
-          if (currentMediaItem?.id == newImageKey) {
-            existingArtUri = currentMediaItem?.artUri;
-          } else if (nowPlaying.imageKey != null) {
-            getImage(imageKey: nowPlaying.imageKey!); 
+          if (currentMediaItem?.id != uniqueId) {
+            if (nowPlaying.imageKey != null) {
+              getImage(imageKey: nowPlaying.imageKey!);
+            } else {
+              audioHandler.mediaItem.add(MediaItem(
+                id: uniqueId,
+                title: nowPlaying.oneLine.line1,
+                artist: nowPlaying.twoLine.line1,
+                album: nowPlaying.threeLine.line1,
+                duration: nowPlaying.length != null
+                    ? Duration(seconds: nowPlaying.length!)
+                    : null,
+                artUri: null,
+              ));
+            }
           }
-
-          audioHandler.mediaItem.add(MediaItem(
-            id: newImageKey,
-            title: nowPlaying.oneLine.line1,
-            artist: nowPlaying.twoLine.line1,
-            album: nowPlaying.threeLine.line1,
-            duration: nowPlaying.length != null
-                ? Duration(seconds: nowPlaying.length!)
-                : null,
-            artUri: existingArtUri,
-          ));
         }
 
         final now = DateTime.now();
@@ -340,25 +345,29 @@ class MyAppState extends ChangeNotifier {
         final Repeat roonRepeat = activeZone.settings.repeat;
 
         AudioServiceShuffleMode mprisShuffle;
-        
-        if (audioHandler.targetShuffle != null && 
+
+        if (audioHandler.targetShuffle != null &&
             roonShuffle != audioHandler.targetShuffle &&
             audioHandler.lastActionTime != null &&
-            now.difference(audioHandler.lastActionTime!).inMilliseconds < 2000) {
-          mprisShuffle = audioHandler.targetShuffle! 
-              ? AudioServiceShuffleMode.all 
+            now.difference(audioHandler.lastActionTime!).inMilliseconds <
+                2000) {
+          mprisShuffle = audioHandler.targetShuffle!
+              ? AudioServiceShuffleMode.all
               : AudioServiceShuffleMode.none;
         } else {
-          audioHandler.targetShuffle = null; 
-          mprisShuffle = roonShuffle ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none;
+          audioHandler.targetShuffle = null;
+          mprisShuffle = roonShuffle
+              ? AudioServiceShuffleMode.all
+              : AudioServiceShuffleMode.none;
         }
 
         AudioServiceRepeatMode mprisRepeat;
-        
-        if (audioHandler.targetRepeat != null && 
+
+        if (audioHandler.targetRepeat != null &&
             roonRepeat != audioHandler.targetRepeat &&
             audioHandler.lastActionTime != null &&
-            now.difference(audioHandler.lastActionTime!).inMilliseconds < 2000) {
+            now.difference(audioHandler.lastActionTime!).inMilliseconds <
+                2000) {
           mprisRepeat = audioHandler.playbackState.value.repeatMode;
         } else {
           audioHandler.targetRepeat = null;
@@ -386,19 +395,17 @@ class MyAppState extends ChangeNotifier {
           },
           playing: isPlaying,
           processingState: AudioProcessingState.ready,
-          updatePosition: Duration(seconds: activeZone.nowPlaying?.seekPosition ?? 0),
+          updatePosition:
+              Duration(seconds: activeZone.nowPlaying?.seekPosition ?? 0),
           shuffleMode: mprisShuffle,
           repeatMode: mprisRepeat,
         ));
-        
-        if (audioHandler.mediaItem.value != null) {
-          audioHandler.mediaItem.add(audioHandler.mediaItem.value!);
-        }
 
         int length = 0;
         int? seekPosition = activeZone.nowPlaying?.seekPosition;
 
-        if (activeZone.nowPlaying != null && activeZone.nowPlaying!.length != null) {
+        if (activeZone.nowPlaying != null &&
+            activeZone.nowPlaying!.length != null) {
           length = activeZone.nowPlaying!.length!;
         }
 
