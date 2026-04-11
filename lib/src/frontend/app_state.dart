@@ -217,16 +217,17 @@ class MyAppState extends ChangeNotifier {
       final currentTrack = zone?.nowPlaying;
       if (currentTrack != null &&
           currentTrack.imageKey == event.field0.imageKey) {
-        // Create a temporary file and write the raw Roon image bytes to it
+          
         getTemporaryDirectory().then((tempDir) {
-          final file = File('${tempDir.path}/${event.field0.imageKey}.jpg');
+          final fileSize = event.field0.image.length;
+          final file = File('${tempDir.path}/${event.field0.imageKey}_$fileSize.jpg');
 
           file.writeAsBytes(event.field0.image).then((_) {
             audioHandler.mediaItem.add(MediaItem(
               id: currentTrack.imageKey ?? 'unknown_id',
               title: currentTrack.oneLine.line1,
-              artist: currentTrack.twoLine.line1,
-              album: currentTrack.threeLine.line1,
+              artist: currentTrack.twoLine.line1, 
+              album: currentTrack.threeLine.line1, 
               duration: currentTrack.length != null
                   ? Duration(seconds: currentTrack.length!)
                   : null,
@@ -319,7 +320,7 @@ class MyAppState extends ChangeNotifier {
           if (currentMediaItem?.id == newImageKey) {
             existingArtUri = currentMediaItem?.artUri;
           } else if (nowPlaying.imageKey != null) {
-            requestThumbnail(nowPlaying.imageKey, (imageEvent) {});
+            getImage(imageKey: nowPlaying.imageKey!); 
           }
 
           audioHandler.mediaItem.add(MediaItem(
