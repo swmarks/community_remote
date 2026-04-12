@@ -230,9 +230,9 @@ class MyAppState extends ChangeNotifier {
 
             audioHandler.mediaItem.add(MediaItem(
               id: uniqueId,
-              title: currentTrack.oneLine.line1,
-              artist: currentTrack.twoLine.line1,
-              album: currentTrack.threeLine.line1,
+              title: currentTrack.threeLine.line1,
+              artist: currentTrack.threeLine.line2,
+              album: currentTrack.threeLine.line3,
               duration: currentTrack.length != null
                   ? Duration(seconds: currentTrack.length!)
                   : null,
@@ -328,9 +328,9 @@ class MyAppState extends ChangeNotifier {
             } else {
               audioHandler.mediaItem.add(MediaItem(
                 id: uniqueId,
-                title: nowPlaying.oneLine.line1,
-                artist: nowPlaying.twoLine.line1,
-                album: nowPlaying.threeLine.line1,
+                title: nowPlaying.threeLine.line1,
+                artist: nowPlaying.threeLine.line2,
+                album: nowPlaying.threeLine.line3,
                 duration: nowPlaying.length != null
                     ? Duration(seconds: nowPlaying.length!)
                     : null,
