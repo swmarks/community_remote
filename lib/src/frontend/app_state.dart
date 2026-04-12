@@ -316,6 +316,16 @@ class MyAppState extends ChangeNotifier {
         zone = activeZone;
         notifyListeners();
 
+        if (activeZone.state == PlayState.stopped &&
+            (activeZone.nowPlaying == null || !activeZone.isNextAllowed)) {
+          audioHandler.mediaItem.add(const MediaItem(
+            id: 'queue_finished_empty_state',
+            title: '',
+            artist: '',
+            album: '',
+          ));
+        }
+
         final nowPlaying = activeZone.nowPlaying;
         if (nowPlaying != null) {
           final currentMediaItem = audioHandler.mediaItem.value;
