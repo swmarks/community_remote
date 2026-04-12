@@ -49,7 +49,8 @@ class _QueueState extends State<Queue> {
         var imageKey = queue[index].imageKey;
 
         if (imageKey != null) {
-          image = _imageCache[imageKey] ?? appState.requestThumbnail(imageKey, addToImageCache);
+          image = _imageCache[imageKey] ??
+              appState.requestThumbnail(imageKey, addToImageCache);
         }
 
         leading = Row(
@@ -62,17 +63,14 @@ class _QueueState extends State<Queue> {
 
         return ListTile(
           leading: leading,
-          title: Text(
-            queue[index].twoLine.line1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: smallWidth ? 15 : 16)
-          ),
-          subtitle: Text(
-            queue[index].twoLine.line2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: smallWidth ? 15 : 16)
-          ),
-          trailing: Text(appState.getDuration(queue[index].length), style: const TextStyle(fontSize: 14)),
+          title: Text(queue[index].twoLine.line1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: smallWidth ? 15 : 16)),
+          subtitle: Text(queue[index].twoLine.line2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: smallWidth ? 15 : 16)),
+          trailing: Text(appState.getDuration(queue[index].length),
+              style: const TextStyle(fontSize: 14)),
           contentPadding: const EdgeInsets.only(left: 10),
           onTap: () {
             selectQueueItem(queueItemId: queue[index].queueItemId);
@@ -97,9 +95,10 @@ class _QueueState extends State<Queue> {
         padding: EdgeInsets.all(dynPadding),
         itemBuilder: itemBuilder,
         separatorBuilder: (_, index) => Divider(
-          color: index < queue.length - 1 && stops.contains(queue[index].queueItemId)
-            ? Theme.of(context).colorScheme.primary
-            : null,
+          color: index < queue.length - 1 &&
+                  stops.contains(queue[index].queueItemId)
+              ? Theme.of(context).colorScheme.primary
+              : null,
         ),
         itemCount: queue.length,
         scrollDirection: Axis.vertical,
@@ -109,42 +108,54 @@ class _QueueState extends State<Queue> {
 
     appState.setQueueRemainingCallback(setQueueRemaining);
 
-    if (appState.zone != null && appState.queue != null && appState.queue!.isNotEmpty) {
+    if (appState.zone != null &&
+        appState.queue != null &&
+        appState.queue!.isNotEmpty) {
       widget = Column(
         children: [
           ListTile(
             title: Row(
               children: [
                 const Text('Queue', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 8), // Adds a clean little gap
-                
-                // --- SHUFFLE BUTTON ---
+                const SizedBox(width: 20),
                 IconButton(
                   icon: const Icon(Icons.shuffle),
-                  color: (appState.zone?.settings.shuffle == true)
-                      ? roonAccentColor
-                      : Colors.white,
+                  style: (appState.zone?.settings.shuffle == true)
+                      ? IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.secondaryContainer,
+                          foregroundColor: Theme.of(context)
+                              .colorScheme
+                              .onSecondaryContainer,
+                        )
+                      : null,
                   onPressed: () {
                     if (appState.zone != null) {
                       changeSettings(shuffle: !appState.zone!.settings.shuffle);
                     }
                   },
                 ),
-                
-                // --- LOOP / REPEAT BUTTON ---
+                const SizedBox(width: 8),
                 IconButton(
                   icon: Icon(
                     appState.zone?.settings.repeat == Repeat.one
                         ? Icons.repeat_one
                         : Icons.repeat,
                   ),
-                  color: (appState.zone?.settings.repeat == Repeat.off || appState.zone?.settings.repeat == null)
-                      ? Colors.white
-                      : roonAccentColor,
+                  style: (appState.zone?.settings.repeat == Repeat.off ||
+                          appState.zone?.settings.repeat == null)
+                      ? null
+                      : IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.secondaryContainer,
+                          foregroundColor: Theme.of(context)
+                              .colorScheme
+                              .onSecondaryContainer,
+                        ),
                   onPressed: () {
                     if (appState.zone != null) {
                       Repeat nextRepeat;
-                      
+
                       switch (appState.zone!.settings.repeat) {
                         case Repeat.off:
                           nextRepeat = Repeat.all;
@@ -156,7 +167,7 @@ class _QueueState extends State<Queue> {
                           nextRepeat = Repeat.off;
                           break;
                       }
-                      
+
                       changeSettings(repeat: nextRepeat);
                     }
                   },
@@ -164,8 +175,9 @@ class _QueueState extends State<Queue> {
               ],
             ),
             trailing: _remaining > 0
-              ? Text(appState.getDuration(_remaining), style: const TextStyle(fontSize: 14))
-              : null,
+                ? Text(appState.getDuration(_remaining),
+                    style: const TextStyle(fontSize: 14))
+                : null,
           ),
           Expanded(child: LayoutBuilder(
             builder: (context, constraints) {
