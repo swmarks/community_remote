@@ -22,6 +22,7 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
   int _length = 0;
   int _elapsed = 0;
   double _progress = 0;
+  bool _isSeeking = false;
   final Map<String, Image> _imageCache = {};
 
   _setProgress(int length, int? elapsed) {
@@ -31,8 +32,10 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
         _elapsed = elapsed;
 
         if (length > 0) {
-          double progress = (elapsed.toDouble() / length.toDouble());
-          _progress = progress;
+          if (!_isSeeking) {
+            double progress = (elapsed.toDouble() / length.toDouble());
+            _progress = progress;
+          }
         } else {
           _progress = 0.0;
         }
@@ -89,7 +92,8 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
         var imageKey = nowPlaying.imageKey;
 
         if (imageKey != null) {
-          image = _imageCache[imageKey] ?? appState.requestThumbnail(imageKey, addToImageCache);
+          image = _imageCache[imageKey] ??
+              appState.requestThumbnail(imageKey, addToImageCache);
         }
 
         if (image != null) {
@@ -108,11 +112,13 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
           titleAlignment: ListTileTitleAlignment.center,
           leading: leading,
           title: Text(nowPlaying.threeLine.line1),
-          subtitle: Text('${nowPlaying.threeLine.line2}\n${nowPlaying.threeLine.line3}'),
+          subtitle: Text(
+              '${nowPlaying.threeLine.line2}\n${nowPlaying.threeLine.line3}'),
           isThreeLine: true,
           onTap: () => showDialog(
             context: context,
-            builder: (context) => const FullScreenDialog(title: 'Now Playing', child: NowPlayingDialog()),
+            builder: (context) => const FullScreenDialog(
+                title: 'Now Playing', child: NowPlayingDialog()),
           ),
         );
 
@@ -120,7 +126,8 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
           if (appState.pauseOnTrackEnd) {
             progress = appState.getDuration(_length - _elapsed);
           } else {
-            progress = '${appState.getDuration(_elapsed)} / ${appState.getDuration(_length)}';
+            progress =
+                '${appState.getDuration(_elapsed)} / ${appState.getDuration(_length)}';
           }
         } else {
           progress = appState.getDuration(_elapsed);
@@ -154,7 +161,8 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
           label: const Text('Queue'),
           onPressed: () => showDialog(
             context: context,
-            builder: (context) => const FullScreenDialog(title: 'Queue', child: Queue()),
+            builder: (context) =>
+                const FullScreenDialog(title: 'Queue', child: Queue()),
           ),
         ));
       }
@@ -166,7 +174,9 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
             child: Zones(smallWidth: false),
           ),
         ),
-        icon: Icon(zone.outputs.length > 1? Icons.speaker_group_outlined: Icons.speaker_outlined),
+        icon: Icon(zone.outputs.length > 1
+            ? Icons.speaker_group_outlined
+            : Icons.speaker_outlined),
         label: Text(zone.displayName),
       ));
 
@@ -202,10 +212,12 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
       ));
     }
 
-    zoneControl.insert(0, Expanded(
-      flex: 1,
-      child: metadata,
-    ));
+    zoneControl.insert(
+        0,
+        Expanded(
+          flex: 1,
+          child: metadata,
+        ));
 
     return Card(
       margin: const EdgeInsets.all(10),
@@ -219,9 +231,49 @@ class _NowPlayingWidgetState extends State<NowPlayingWidget> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 0, 80, 0),
-              child:  Row(
+              child: Row(
                 children: [
-                  Expanded(child: LinearProgressIndicator(value: _progress)),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4.0,
+                        thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6.0),
+                        overlayShape:
+                            const RoundSliderOverlayShape(overlayRadius: 14.0),
+                      ),
+                      child: Slider(
+                        value: _progress,
+                        onChanged: (newValue) {
+                          setState(() {
+                            _progress = newValue;
+                            // Dynamically update the text clock as you drag!
+                            _elapsed = (newValue * _length).toInt();
+                          });
+                        },
+                        onChangeStart: (newValue) {
+                          _isSeeking = true;
+                        },
+                        onChangeEnd: (newValue) {
+                          int targetSeconds = (newValue * _length).toInt();
+
+                          // --- THE RUST BRIDGE CALL ---
+                          seekZone(seconds: targetSeconds);
+
+                          // Add a 500ms delay before releasing the "Ghost State".
+                          // This prevents the slider from flickering back to the old position
+                          // if a Roon update arrives right before Roon actually executes the seek.
+                          Future.delayed(const Duration(milliseconds: 500), () {
+                            if (mounted) {
+                              setState(() {
+                                _isSeeking = false;
+                              });
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                  ),
                   const Padding(padding: EdgeInsets.only(left: 10)),
                   Text(progress),
                   const Padding(padding: EdgeInsets.only(left: 20)),

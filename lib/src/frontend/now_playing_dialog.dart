@@ -23,6 +23,7 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
   int _length = 0;
   int _elapsed = 0;
   double _progress = 0;
+  bool _isSeeking = false;
   String? _imageKey;
   Image? _image;
   int _extractHash = 0;
@@ -38,8 +39,10 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
         _elapsed = elapsed;
 
         if (length > 0) {
-          double progress = (elapsed.toDouble() / length.toDouble());
-          _progress = progress;
+          if (!_isSeeking) {
+            double progress = (elapsed.toDouble() / length.toDouble());
+            _progress = progress;
+          }
         } else {
           _progress = 0.0;
         }
@@ -87,15 +90,13 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
     String progress = '';
     bool smallWidth = MediaQuery.sizeOf(context).width < smallScreenMaxWidth;
 
-    if (_extractType == ExtractType.album
-      && appState.wikiExtractAlbum == null
-      && appState.wikiExtractArtist != null)
-    {
+    if (_extractType == ExtractType.album &&
+        appState.wikiExtractAlbum == null &&
+        appState.wikiExtractArtist != null) {
       _extractType = ExtractType.artist;
-    } else if (_extractType == ExtractType.artist
-      && appState.wikiExtractAlbum != null
-      && appState.wikiExtractArtist == null)
-    {
+    } else if (_extractType == ExtractType.artist &&
+        appState.wikiExtractAlbum != null &&
+        appState.wikiExtractArtist == null) {
       _extractType = ExtractType.album;
     }
 
@@ -115,8 +116,11 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
         }
 
         metadata = ListTile(
-          title: Text(nowPlaying.threeLine.line1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${nowPlaying.threeLine.line2}\n${nowPlaying.threeLine.line3}', overflow: TextOverflow.ellipsis),
+          title:
+              Text(nowPlaying.threeLine.line1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+              '${nowPlaying.threeLine.line2}\n${nowPlaying.threeLine.line3}',
+              overflow: TextOverflow.ellipsis),
           isThreeLine: true,
           contentPadding: const EdgeInsets.all(0),
           minTileHeight: 72,
@@ -129,7 +133,8 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
           if (appState.pauseOnTrackEnd || smallWidth) {
             progress = appState.getDuration(_length - _elapsed);
           } else {
-            progress = '${appState.getDuration(_elapsed)} / ${appState.getDuration(_length)}';
+            progress =
+                '${appState.getDuration(_elapsed)} / ${appState.getDuration(_length)}';
           }
         } else {
           progress = appState.getDuration(_elapsed);
@@ -159,8 +164,8 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
     }
 
     String? extract = _extractType == ExtractType.album
-      ? appState.wikiExtractAlbum
-      : appState.wikiExtractArtist;
+        ? appState.wikiExtractAlbum
+        : appState.wikiExtractArtist;
     List<Widget> controls;
     List<Widget> nowPlaying;
     List<Widget> toggle = [
@@ -175,44 +180,48 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
       }
     }
 
-    String headline = _extractType == ExtractType.album
-      ? _album
-      : _artist;
+    String headline = _extractType == ExtractType.album ? _album : _artist;
 
-    if (appState.wikiExtractAlbum != null && appState.wikiExtractArtist != null) {
+    if (appState.wikiExtractAlbum != null &&
+        appState.wikiExtractArtist != null) {
       IconButton switchType = _extractType == ExtractType.album
-        ? IconButton(
-          onPressed: () {
-            setState(() {
-              _extractType = ExtractType.artist;
-            });
-          },
-          icon: const Icon(Symbols.artist_rounded),
-          tooltip: "About Artist",
-        )
-        : IconButton(
-          onPressed: () {
-            setState(() {
-              _extractType = ExtractType.album;
-            });
-          },
-          icon: const Icon(Icons.album_outlined),
-          tooltip: "About Album",
-        );
+          ? IconButton(
+              onPressed: () {
+                setState(() {
+                  _extractType = ExtractType.artist;
+                });
+              },
+              icon: const Icon(Symbols.artist_rounded),
+              tooltip: "About Artist",
+            )
+          : IconButton(
+              onPressed: () {
+                setState(() {
+                  _extractType = ExtractType.album;
+                });
+              },
+              icon: const Icon(Icons.album_outlined),
+              tooltip: "About Album",
+            );
 
       toggle.insert(
         0,
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            Expanded(flex: 1, child: Text(headline, style: Theme.of(context).textTheme.headlineSmall)),
+            Expanded(
+                flex: 1,
+                child: Text(headline,
+                    style: Theme.of(context).textTheme.headlineSmall)),
             switchType,
             const Padding(padding: EdgeInsets.only(right: 10)),
           ],
         ),
       );
-    } else if (appState.wikiExtractAlbum != null || appState.wikiExtractArtist != null) {
-      toggle.insert(0, Text(headline, style: Theme.of(context).textTheme.headlineSmall));
+    } else if (appState.wikiExtractAlbum != null ||
+        appState.wikiExtractArtist != null) {
+      toggle.insert(
+          0, Text(headline, style: Theme.of(context).textTheme.headlineSmall));
     }
 
     if (smallWidth) {
@@ -221,7 +230,45 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
         Padding(padding: const EdgeInsets.all(40), child: _image),
       );
       controls = [
-        Expanded(child: LinearProgressIndicator(value: _progress)),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4.0,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14.0),
+            ),
+            child: Slider(
+              value: _progress,
+              onChanged: (newValue) {
+                setState(() {
+                  _progress = newValue;
+                  // Dynamically update the text clock as you drag!
+                  _elapsed = (newValue * _length).toInt();
+                });
+              },
+              onChangeStart: (newValue) {
+                _isSeeking = true;
+              },
+              onChangeEnd: (newValue) {
+                int targetSeconds = (newValue * _length).toInt();
+
+                // --- THE RUST BRIDGE CALL ---
+                seekZone(seconds: targetSeconds);
+
+                // Add a 500ms delay before releasing the "Ghost State".
+                // This prevents the slider from flickering back to the old position
+                // if a Roon update arrives right before Roon actually executes the seek.
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    setState(() {
+                      _isSeeking = false;
+                    });
+                  }
+                });
+              },
+            ),
+          ),
+        ),
         const Padding(padding: EdgeInsets.only(left: 10)),
         Text(progress),
         IconButton(
@@ -256,7 +303,45 @@ class _NowPlayingDialogState extends State<NowPlayingDialog> {
       ];
     } else {
       controls = [
-        Expanded(child: LinearProgressIndicator(value: _progress)),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4.0,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14.0),
+            ),
+            child: Slider(
+              value: _progress,
+              onChanged: (newValue) {
+                setState(() {
+                  _progress = newValue;
+                  // Dynamically update the text clock as you drag!
+                  _elapsed = (newValue * _length).toInt();
+                });
+              },
+              onChangeStart: (newValue) {
+                _isSeeking = true;
+              },
+              onChangeEnd: (newValue) {
+                int targetSeconds = (newValue * _length).toInt();
+
+                // --- THE RUST BRIDGE CALL ---
+                seekZone(seconds: targetSeconds);
+
+                // Add a 500ms delay before releasing the "Ghost State".
+                // This prevents the slider from flickering back to the old position
+                // if a Roon update arrives right before Roon actually executes the seek.
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    setState(() {
+                      _isSeeking = false;
+                    });
+                  }
+                });
+              },
+            ),
+          ),
+        ),
         const Padding(padding: EdgeInsets.only(left: 10)),
         Text(progress),
         const Padding(padding: EdgeInsets.only(left: 20)),

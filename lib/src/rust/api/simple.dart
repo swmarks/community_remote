@@ -76,6 +76,9 @@ Future<void> controlByZoneId(
     RustLib.instance.api
         .crateApiSimpleControlByZoneId(zoneId: zoneId, control: control);
 
+Future<void> seekZone({required int seconds}) =>
+    RustLib.instance.api.crateApiSimpleSeekZone(seconds: seconds);
+
 Future<void> changeSettings({Repeat? repeat, bool? shuffle}) =>
     RustLib.instance.api
         .crateApiSimpleChangeSettings(repeat: repeat, shuffle: shuffle);

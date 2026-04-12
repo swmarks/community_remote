@@ -8,7 +8,7 @@ use roon_api::{
     status::{self, Status},
     transport::{
         volume::{ChangeMode, Mute},
-        Control, Settings, State, Transport,
+        Control, Seek, Settings, State, Transport,
     },
     Info, RoonApi, Services, Svc,
 };
@@ -417,6 +417,18 @@ impl Roon {
         if allowed {
             handler.transport.as_ref()?.control(zone_id, control).await;
         }
+
+        Some(())
+    }
+
+    pub async fn seek_zone(&self, seconds: i32) -> Option<()> {
+        let handler = self.handler.lock().await;
+
+        handler
+            .transport
+            .as_ref()?
+            .seek(handler.zone_id.as_deref()?, &Seek::Absolute, seconds) // <-- The fix
+            .await;
 
         Some(())
     }

@@ -268,6 +268,14 @@ pub async fn control_by_zone_id(zone_id: String, control: Control) {
     }
 }
 
+pub async fn seek_zone(seconds: i32) {
+    let api = API.lock().await;
+
+    if let Some(roon) = api.roon.as_ref() {
+        roon.seek_zone(seconds).await;
+    }
+}
+
 pub async fn change_settings(repeat: Option<Repeat>, shuffle: Option<bool>) {
     let api = API.lock().await;
 
