@@ -113,7 +113,56 @@ class _QueueState extends State<Queue> {
       widget = Column(
         children: [
           ListTile(
-            title: const Text('Queue', style: TextStyle(fontSize: 20)),
+            title: Row(
+              children: [
+                const Text('Queue', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 8), // Adds a clean little gap
+                
+                // --- SHUFFLE BUTTON ---
+                IconButton(
+                  icon: const Icon(Icons.shuffle),
+                  color: (appState.zone?.settings.shuffle == true)
+                      ? roonAccentColor
+                      : Colors.white,
+                  onPressed: () {
+                    if (appState.zone != null) {
+                      changeSettings(shuffle: !appState.zone!.settings.shuffle);
+                    }
+                  },
+                ),
+                
+                // --- LOOP / REPEAT BUTTON ---
+                IconButton(
+                  icon: Icon(
+                    appState.zone?.settings.repeat == Repeat.one
+                        ? Icons.repeat_one
+                        : Icons.repeat,
+                  ),
+                  color: (appState.zone?.settings.repeat == Repeat.off || appState.zone?.settings.repeat == null)
+                      ? Colors.white
+                      : roonAccentColor,
+                  onPressed: () {
+                    if (appState.zone != null) {
+                      Repeat nextRepeat;
+                      
+                      switch (appState.zone!.settings.repeat) {
+                        case Repeat.off:
+                          nextRepeat = Repeat.all;
+                          break;
+                        case Repeat.all:
+                          nextRepeat = Repeat.one;
+                          break;
+                        case Repeat.one:
+                          nextRepeat = Repeat.off;
+                          break;
+                      }
+                      
+                      changeSettings(repeat: nextRepeat);
+                    }
+                  },
+                ),
+              ],
+            ),
             trailing: _remaining > 0
               ? Text(appState.getDuration(_remaining), style: const TextStyle(fontSize: 14))
               : null,
